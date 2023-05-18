@@ -1,3 +1,8 @@
-[selenium-soup]
-name = "sampleproject"  
+[project]
+name = "selenium_soup"  
 version = "0.0.1"
+readme = "README.md"
+license = { file = "LICENSE" }
+
+[build-system]
+requires = ["setuptools>=40.8.0", "bs4", "selenium"]

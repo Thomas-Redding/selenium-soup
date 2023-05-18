@@ -2,29 +2,25 @@ import selenium.webdriver
 import selenium.webdriver.common.keys
 import time
 
-import shared
+import selenium_soup
 
-browser = shared.Browser(selenium.webdriver.Firefox())
+browser = selenium_soup.Browser(selenium.webdriver.Firefox())
 
 browser.navigateTo('https://google.com')
 body = browser.body()
 searchBox = body.selectAll('textarea')[0]
 searchBoxDriver = searchBox.driver()
 searchBoxDriver.click()
-# searchBoxDriver.send_keys('pears')
-# searchBoxDriver.send_keys(selenium.webdriver.common.keys.Keys.RETURN)
+searchBoxDriver.send_keys('pears')
+searchBoxDriver.send_keys(selenium.webdriver.common.keys.Keys.RETURN)
 
-# for i in range(10):
-#   time.sleep(0.5)
-#   browser.waitUntilSelector('div#search')
-#   body = browser.body()
-#   searchResults = body.selectUnique('div#search')
-#   resultH3s = searchResults.selectAll('h3', maxElements=100)
-#   for resultH3 in resultH3s:
-#     resultTitle = resultH3.tree().text
-#     aTag = resultH3.parent().tree().a
-#     if not aTag: continue # section heading (e.g. "People also ask") rather than search result
-#     resultURL = resultH3.parent().tree().a['href']
-#     print(resultTitle, resultURL)
-#   nextButton = body.selectUnique('a#pnnext')
-#   nextButton.click()
+time.sleep(0.5)
+browser.waitUntilSelector('div#search')
+body = browser.body()
+searchResults = body.selectUnique('div#search')
+resultH3s = searchResults.selectAll('h3', maxElements=100)
+for resultH3 in resultH3s:
+  result_title = resultH3.tree().text
+  url = resultH3.parent().tree()['href']
+  print(result_title)
+  print(url)

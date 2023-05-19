@@ -51,7 +51,6 @@ class HTMLElement:
   def driver(self):
     if self._driverElement == None:
       driver = self._browser.webDriver()
-      print(driver)
       self._driverElement = driver.find_element(selenium.webdriver.common.by.By.CSS_SELECTOR, '[redding_id="%i"]' % self._reddingID)
     return self._driverElement
 
@@ -246,7 +245,6 @@ class HTMLElement:
         return rtn;
       }
     """ % (self._reddingID, escapedXpathExpression, resultType, self._browser._reddingIDCounter))
-    print(results)
     if results == None:
       raise Exception("Tag (%s) with text (%s) not found" % (tagName, escapedText))
     if resultType in ['ANY_UNORDERED_NODE_TYPE', 'BOOLEAN_TYPE', 'FIRST_ORDERED_NODE_TYPE', 'NUMBER_TYPE', 'STRING_TYPE']:
@@ -346,15 +344,22 @@ class Browser:
   def js(self, javascript):
     return self._browser.execute_script(javascript)
 
-  @classmethod
   def download(self, url, path):
     # TODO: Support cookies
-    userAgent = driver.execute_script("return navigator.userAgent;")
-    if userAgent != self._lastUserAgent:
-      headers = {'User-Agent': userAgent}
-      opener = urllib.request.build_opener()
-      opener.addheaders = [('User-agent', HEADERS['User-Agent'])]
-      urllib.request.install_opener(opener)
+    userAgent = self.driver().execute_script("return navigator.userAgent;")
+    headers = {'User-Agent': userAgent}
+    opener = urllib.request.build_opener()
+    opener.addheaders = [('User-agent', userAgent)]
+    urllib.request.install_opener(opener)
+    urllib.request.urlretrieve(url, path)
+
+  @classmethod
+  def download_basic(cls, url, path):
+    userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
+    headers = {'User-Agent': userAgent}
+    opener = urllib.request.build_opener()
+    opener.addheaders = [('User-agent', userAgent)]
+    urllib.request.install_opener(opener)
     urllib.request.urlretrieve(url, path)
 
   def parseURL(self, url):

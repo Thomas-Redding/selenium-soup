@@ -303,6 +303,7 @@ class Browser:
 
   def waitForPageToLoad(self, timeOut):
     # Wait for the page to load.
+    time.sleep(0.1)
     startTime = time.time()
     while True:
       if time.time() - startTime > timeOut:
@@ -345,6 +346,7 @@ class Browser:
   def js(self, javascript):
     return self._browser.execute_script(javascript)
 
+  @classmethod
   def download(self, url, path):
     # TODO: Support cookies
     userAgent = driver.execute_script("return navigator.userAgent;")

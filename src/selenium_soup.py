@@ -280,18 +280,18 @@ class HTMLElement:
     return self._browser.js(prefix + javascript)
 
 # INSTANCE METHODS:
-# navigateTo(url: string, timeOut=10)
-# waitForPageToLoad(timeOut=10)
-# withFor(timeOut: float, fn: (browser) => {})
-# waitForSelector(cssSelector: string, timeOut=10)
-# body(force=False: boolean): HTMLElement
-# webDriver(): selenium.webdriver.firefox.webdriver.WebDriver
-# js(javascript: string): any
-# download(url: string, path: string)
+#   navigateTo(url: string, timeOut=10)
+#   waitForPageToLoad(timeOut=10)
+#   withFor(timeOut: float, fn: (browser) => {})
+#   waitForSelector(cssSelector: string, timeOut=10)
+#   body(force=False: boolean): HTMLElement
+#   webDriver(): selenium.webdriver.firefox.webdriver.WebDriver
+#   js(javascript: string): any
+#   download(url: string, path: string)
 # CLASS METHODS
-# download_basic(url: string, path: string)
-# persistentChromeBrowser(driverPath: string, userDataPath: string, profileDirectory: string): Browser
-# parseURL(url: string): string
+#   download_basic(url: string, path: string)
+#   persistentChromeBrowser(driverPath: string, userDataPath: string, profileDirectory: string): Browser
+#   parseURL(url: string): string
 class Browser:
   def __init__(self, browser):
     self._browser = browser

@@ -49,7 +49,7 @@ with
 
 ```python
 browser = selenium_soup.Browser.persistentChromeBrowser(
-  '/Users/tfr/proj/job-search/from selenium-soup/chromedriver_mac64/chromedriver', 
+  '~/Downloads/chromedriver_mac64/chromedriver', 
   '~/Library/Application Support/Google/Chrome',
   'tester'
 )

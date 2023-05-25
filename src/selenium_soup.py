@@ -279,6 +279,7 @@ class HTMLElement:
     """ % self._reddingID
     return self._browser.js(prefix + javascript)
 
+# INSTANCE METHODS:
 # navigateTo(url: string, timeOut=10)
 # waitForPageToLoad(timeOut=10)
 # withFor(timeOut: float, fn: (browser) => {})
@@ -287,7 +288,10 @@ class HTMLElement:
 # webDriver(): selenium.webdriver.firefox.webdriver.WebDriver
 # js(javascript: string): any
 # download(url: string, path: string)
-# parseURL(url: string): ParseResult
+# CLASS METHODS
+# download_basic(url: string, path: string)
+# persistentChromeBrowser(driverPath: string, userDataPath: string, profileDirectory: string): Browser
+# parseURL(url: string): string
 class Browser:
   def __init__(self, browser):
     self._browser = browser
@@ -380,7 +384,8 @@ class Browser:
     c = selenium.webdriver.Chrome(executable_path=driverPath, chrome_options=options)
     return Browser(c)
 
-  def parseURL(self, url):
+  @classmethod
+  def parseURL(cls, url):
     return urllib.parse.urlparse(url)
 
 

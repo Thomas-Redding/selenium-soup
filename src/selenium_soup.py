@@ -280,7 +280,9 @@ class HTMLElement:
     return self._browser.js(prefix + javascript)
 
 # navigateTo(url: string, timeOut=10)
-# waitUntilSelector(cssSelector: string, timeOut=5)
+# waitForPageToLoad(timeOut=10)
+# withFor(timeOut: float, fn: (browser) => {})
+# waitForSelector(cssSelector: string, timeOut=10)
 # body(force=False: boolean): HTMLElement
 # webDriver(): selenium.webdriver.firefox.webdriver.WebDriver
 # js(javascript: string): any
@@ -300,19 +302,20 @@ class Browser:
     self.waitForPageToLoad(timeOut)
 
   def waitForPageToLoad(self, timeOut):
+    self.withFor(timeOut, lambda browser: browser.js('return document.readyState;') == 'complete')
+
+  def withFor(self, timeOut, fn):
     # Wait for the page to load.
     time.sleep(0.1)
     startTime = time.time()
     while True:
       if time.time() - startTime > timeOut:
-        assert False, "Took more than 10 seconds to load the page"
+        assert False, "Took more than %i seconds to load the page" % i
       time.sleep(0.1)
-      page_state = self._browser.execute_script('return document.readyState;')
-      if page_state == 'complete':
-        break
+      if fn(self): break
     time.sleep(0.5) # just in case
 
-  def waitUntilSelector(self, cssSelector, timeOut=5):
+  def waitForSelector(self, cssSelector, timeOut=10):
     return selenium.webdriver.support.ui.WebDriverWait(self._browser, timeOut).until(selenium.webdriver.support.expected_conditions.presence_of_element_located((selenium.webdriver.common.by.By.CSS_SELECTOR, cssSelector)))
 
   def body(self, force=False):
@@ -361,6 +364,21 @@ class Browser:
     opener.addheaders = [('User-agent', userAgent)]
     urllib.request.install_opener(opener)
     urllib.request.urlretrieve(url, path)
+
+  # Open up Chrome browser with persistent user data.
+  # For this to work, you must first quit Google Chrome.
+  # @param driverPath - driver download from https://chromedriver.chromium.org/downloads
+  #                     example: "chromedriver_mac64/chromedriver"
+  # @param userDataPath - '~/Library/Application Support/Google/Chrome'
+  # @param profileDirectory - 'tester'
+  # TODO: Investigate using 'Default' as `profileDirectory`.
+  @classmethod
+  def persistentChromeBrowser(cls, driverPath, userDataPath, profileDirectory):
+    options = selenium.webdriver.chrome.options.Options()
+    options.add_argument("user-data-dir=%s" % userDataPath)
+    options.add_argument('profile-directory=%s' % profileDirectory)
+    c = selenium.webdriver.Chrome(executable_path=driverPath, chrome_options=options)
+    return Browser(c)
 
   def parseURL(self, url):
     return urllib.parse.urlparse(url)

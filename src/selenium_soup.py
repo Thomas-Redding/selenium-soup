@@ -314,7 +314,7 @@ class Browser:
     startTime = time.time()
     while True:
       if time.time() - startTime > timeOut:
-        assert False, "Took more than %i seconds to load the page" % i
+        assert False, "Took more than %i seconds to load the page" % timeOut
       time.sleep(0.1)
       if fn(self): break
     time.sleep(0.5) # just in case

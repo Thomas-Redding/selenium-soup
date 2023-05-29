@@ -48,10 +48,11 @@ browser = selenium_soup.Browser(selenium.webdriver.Chrome())
 with
 
 ```python
+import os
+home_dir = os.path.expanduser('~')
 browser = selenium_soup.Browser.persistentChromeBrowser(
-  '~/Downloads/chromedriver_mac64/chromedriver', 
-  '~/Library/Application Support/Google/Chrome',
-  'tester'
+  home_dir + '/Downloads/chromedriver_mac64/chromedriver', 
+  'Chrome', 'tester'
 )
 ```
 

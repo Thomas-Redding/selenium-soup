@@ -22,6 +22,7 @@ import urllib.parse
 # foo.driver(): selenium.webdriver.remote.webelement.WebElement
 
 ### Here are some other useful methods:
+# contents(): str
 # parent(): HTMLElement
 # updateTree()
 # selectOne(cssSelector: string): HTMLElement
@@ -47,6 +48,9 @@ class HTMLElement:
 
   def tree(self):
     return self._tree
+
+  def contents(self):
+    return self._tree.encode_contents().decode('utf-8')
 
   def driver(self):
     if self._driverElement == None:

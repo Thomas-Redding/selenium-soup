@@ -56,4 +56,4 @@ browser = selenium_soup.Browser.persistentChromeBrowser(
 )
 ```
 
-and then download `chromedriver` from [here](https://chromedriver.chromium.org/downloads).
+and then download `chromedriver` from either [here](https://chromedriver.chromium.org/downloads) or [here](https://googlechromelabs.github.io/chrome-for-testing/).

@@ -58,6 +58,12 @@ class HTMLElement:
       self._driverElement = driver.find_element(selenium.webdriver.common.by.By.CSS_SELECTOR, '[redding_id="%i"]' % self._reddingID)
     return self._driverElement
 
+  def seleniumElementForXPath(self, xpathExpression):
+    return self.driver().find_element(selenium.webdriver.common.by.By.XPATH, xpathExpression)
+
+  def seleniumElementsForXPath(self, xpathExpression):
+    return self.driver().find_elements(selenium.webdriver.common.by.By.XPATH, xpathExpression)
+
   def parent(self):
     self._browser._reddingIDCounter += 1
     results = self._browser._browser.execute_script("""
@@ -363,6 +369,12 @@ class Browser:
     opener.addheaders = [('User-agent', userAgent)]
     urllib.request.install_opener(opener)
     urllib.request.urlretrieve(url, path)
+
+  def seleniumElementForXPath(self, xpathExpression):
+    return self.webDriver().find_element(selenium.webdriver.common.by.By.XPATH, xpathExpression)
+
+  def seleniumElementsForXPath(self, xpathExpression):
+    return self.webDriver().find_elements(selenium.webdriver.common.by.By.XPATH, xpathExpression)
 
   @classmethod
   def download_basic(cls, url, path):

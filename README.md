@@ -25,6 +25,7 @@ pip3 install selenium-soup/
 import selenium_soup
 
 browser = selenium_soup.Browser(selenium.webdriver.Chrome())
+# browser = selenium_soup.Browser(selenium.webdriver.Firefox())
 browser.navigateTo('https://www.foobar.com')
 input('Sign in if necessary. Then hit ENTER.')
 

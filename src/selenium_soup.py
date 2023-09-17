@@ -269,7 +269,7 @@ class HTMLElement:
 
   def click(self, useDriver=True):
     if useDriver:
-      left.selectUnique('#limit-selector').driver().click()
+      self.driver().click()
     else:
       results = self._browser._browser.execute_script("""
         let mes = document.querySelectorAll('[redding_id="%i"]');

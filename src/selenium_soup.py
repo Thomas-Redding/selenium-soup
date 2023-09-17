@@ -267,17 +267,20 @@ class HTMLElement:
       rtn.append(HTMLElement(self, html, reddingID))
     return rtn
 
-  def click(self):
-    results = self._browser._browser.execute_script("""
-      let mes = document.querySelectorAll('[redding_id="%i"]');
-      if (mes.length !== 1) {
-        return -1;
-      }
-      let me = mes[0];
-      me.click();
-    """ % (self._reddingID))
-    if results == -1:
-      raise Exception("Element was removed")
+  def click(self, useDriver=True):
+    if useDriver:
+      left.selectUnique('#limit-selector').driver().click()
+    else:
+      results = self._browser._browser.execute_script("""
+        let mes = document.querySelectorAll('[redding_id="%i"]');
+        if (mes.length !== 1) {
+          return -1;
+        }
+        let me = mes[0];
+        me.click();
+      """ % (self._reddingID))
+      if results == -1:
+        raise Exception("Element was removed")
 
   def escapeCssSelector(self, cssSelector):
     return cssSelector.replace('"', '\\"')

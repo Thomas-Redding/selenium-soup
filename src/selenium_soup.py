@@ -54,7 +54,7 @@ class HTMLElement:
 
   def driver(self):
     if self._driverElement == None:
-      driver = self._browser.webDriver()
+      driver = self._browser.driver()
       self._driverElement = driver.find_element(selenium.webdriver.common.by.By.CSS_SELECTOR, '[redding_id="%i"]' % self._reddingID)
     return self._driverElement
 
@@ -298,11 +298,11 @@ class HTMLElement:
 #   withFor(timeOut: float, fn: (browser) => {})
 #   waitForSelector(cssSelector: string, timeOut=10)
 #   body(force=False: boolean): HTMLElement
-#   webDriver(): selenium.webdriver.firefox.webdriver.WebDriver
+#   driver(): selenium.webdriver.firefox.webdriver.WebDriver
 #   js(javascript: string): any
 #   download(url: string, path: string)
 # CLASS METHODS
-#   download_basic(url: string, path: string)
+#   download_basic(url: string, path: string, userAgent: string)
 #   persistentChromeBrowser(driverPath: string, userDataPath: string, profileDirectory: string): Browser
 #   parseURL(url: string): string
 class Browser:
@@ -358,6 +358,10 @@ class Browser:
     return self._body
 
   # Support ad-hoc selenium methods
+  def driver(self):
+    return self._browser
+
+  # deprecated
   def webDriver(self):
     return self._browser
 
@@ -367,25 +371,28 @@ class Browser:
   def download(self, url, path):
     # TODO: Support cookies
     userAgent = self.driver().execute_script("return navigator.userAgent;")
-    headers = {'User-Agent': userAgent}
-    opener = urllib.request.build_opener()
-    opener.addheaders = [('User-agent', userAgent)]
-    urllib.request.install_opener(opener)
-    urllib.request.urlretrieve(url, path)
+    Browser.download_basic(url, path, userAgent)
 
   def seleniumElementForXPath(self, xpathExpression):
-    return self.webDriver().find_element(selenium.webdriver.common.by.By.XPATH, xpathExpression)
+    return self.driver().find_element(selenium.webdriver.common.by.By.XPATH, xpathExpression)
 
   def seleniumElementsForXPath(self, xpathExpression):
-    return self.webDriver().find_elements(selenium.webdriver.common.by.By.XPATH, xpathExpression)
+    return self.driver().find_elements(selenium.webdriver.common.by.By.XPATH, xpathExpression)
+
+  def clearBrowserData(self):
+    self._browser.execute_cdp_cmd('Storage.clearDataForOrigin', {
+        "origin": '*',
+        "storageTypes": 'all',
+    })
 
   @classmethod
-  def download_basic(cls, url, path):
-    userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
-    headers = {'User-Agent': userAgent}
-    opener = urllib.request.build_opener()
-    opener.addheaders = [('User-agent', userAgent)]
-    urllib.request.install_opener(opener)
+  # 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
+  def download_basic(cls, url, path, userAgent=None):
+    if userAgent:
+      headers = {'User-Agent': userAgent}
+      opener = urllib.request.build_opener()
+      opener.addheaders = [('User-agent', userAgent)]
+      urllib.request.install_opener(opener)
     urllib.request.urlretrieve(url, path)
 
   # Open up Chrome browser with persistent user data.

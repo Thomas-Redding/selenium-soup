@@ -1,7 +1,7 @@
 
+import base64
 import bs4
 import os
-
 import selenium.webdriver.support.expected_conditions
 import selenium.webdriver.support.ui
 import selenium.webdriver.common.by
@@ -292,6 +292,24 @@ class HTMLElement:
     """ % self._reddingID
     return self._browser.js(prefix + javascript)
 
+  def saveImageFromRAMAsPng(self, path):
+    assert self._tree.name == 'img'
+    # https://stackoverflow.com/a/61061867
+    script = """
+      var c = document.createElement('canvas');
+      var ctx = c.getContext('2d');
+      c.height = self.naturalHeight;
+      c.width = self.naturalWidth;
+      ctx.drawImage(self, 0, 0, self.naturalWidth, self.naturalHeight);
+      var base64String = c.toDataURL();
+      return base64String;
+    """
+    base64String = self.js(script)
+    assert base64String.startswith('data:image/png;base64,')
+    imageData = base64.b64decode(base64String[len('data:image/png;base64,'):])
+    with open(path, "wb") as f:
+      f.write(imageData)
+
 # INSTANCE METHODS:
 #   navigateTo(url: string, timeOut=10)
 #   waitForPageToLoad(timeOut=10)
@@ -414,7 +432,17 @@ class Browser:
   def parseURL(cls, url):
     return urllib.parse.urlparse(url)
 
-
+  def absolutifyUrl(self, potentially_relative_url):
+    page_url = self.js('return window.location.href;')
+    url = potentially_relative_url
+    if url.startswith('http://') or url.startswith('https://'):
+      return url
+    page_url_info = urllib.parse.urlparse(page_url)
+    if url.startswith('/'):
+      # TODO: `page_url.hostname` or `page_url.netloc`
+      return page_url_info.scheme + '://' + page_url_info.hostname + url
+    page_dir = os.path.split(page_url_info.path)[0]
+    return page_url_info.scheme + '://' + page_url_info.hostname + page_dir + '/' + url
 
 
 

@@ -2,14 +2,14 @@
 import base64
 import bs4
 import os
+import pyautogui # pip3 install pyautogui
+import re
 import selenium.webdriver.support.expected_conditions
 import selenium.webdriver.support.ui
 import selenium.webdriver.common.by
 import time
 import urllib.request
 import urllib.parse
-
-import pyautogui # pip3 install pyautogui
 
 ########## bs4 + selenium + urllib ##########
 
@@ -23,16 +23,21 @@ import pyautogui # pip3 install pyautogui
 # foo.tree(): bs4.BeautifulSoup
 # foo.driver(): selenium.webdriver.remote.webelement.WebElement
 
+
+
+
+
+
 ### Here are some other useful methods:
 # contents(): str
 # parent(): HTMLElement
 # updateTree()
-# selectOne(cssSelector: string): HTMLElement
-# selectAll(cssSelector: string, maxElements=100: integer): list<HTMLElement>
-# selectUnique(cssSelector: string): HTMLElement
-# xpath(xpathExpression: string, resultType: string): list<HTMLElement>
+# selectOne(cssSelector: str): HTMLElement
+# selectAll(cssSelector: str, maxElements=100: integer): list<HTMLElement>
+# selectUnique(cssSelector: str): HTMLElement
+# xpath(xpathExpression: str, resultType: str): list<HTMLElement>
 # click()
-# js(javascript: string): any
+# js(javascript: str): any
 
 class HTMLElement:
   def __init__(self, browser, html, reddingID):
@@ -105,7 +110,7 @@ class HTMLElement:
     self._tree = bs4.BeautifulSoup(results, 'html.parser')
 
   def selectOne(self, cssSelector):
-    cssSelector = self.escapeCssSelector(cssSelector)
+    cssSelector = HTMLElement.escapeCssSelector(cssSelector)
     self._browser._reddingIDCounter += 1
     results = self._browser._browser.execute_script("""
       let mes = document.querySelectorAll('[redding_id="%i"]');
@@ -132,7 +137,7 @@ class HTMLElement:
     return HTMLElement(self._browser, html, reddingID)
 
   def selectAll(self, cssSelector, maxElements=100):
-    cssSelector = self.escapeCssSelector(cssSelector)
+    cssSelector = HTMLElement.escapeCssSelector(cssSelector)
     self._browser._reddingIDCounter += 1
     results = self._browser._browser.execute_script("""
       let mes = document.querySelectorAll('[redding_id="%i"]');
@@ -171,7 +176,7 @@ class HTMLElement:
     return rtn
 
   def selectUnique(self, cssSelector):
-    cssSelector = self.escapeCssSelector(cssSelector)
+    cssSelector = HTMLElement.escapeCssSelector(cssSelector)
     self._browser._reddingIDCounter += 1
     results = self._browser._browser.execute_script("""
       let mes = document.querySelectorAll('[redding_id="%i"]');
@@ -284,6 +289,7 @@ class HTMLElement:
       if results == -1:
         raise Exception("Element was removed")
 
+  @classmethod
   def escapeCssSelector(self, cssSelector):
     return cssSelector.replace('"', '\\"')
 
@@ -312,19 +318,31 @@ class HTMLElement:
     with open(path, "wb") as f:
       f.write(imageData)
 
+
+
+
+
 # INSTANCE METHODS:
-#   navigateTo(url: string, timeOut=10)
+#   navigateTo(url: str, timeOut=10)
 #   waitForPageToLoad(timeOut=10)
 #   withFor(timeOut: float, fn: (browser) => {})
-#   waitForSelector(cssSelector: string, timeOut=10)
+#   waitForSelector(cssSelector: str, timeOut=10)
 #   body(force=False: boolean): HTMLElement
 #   driver(): selenium.webdriver.firefox.webdriver.WebDriver
-#   js(javascript: string): any
-#   download(url: string, path: string)
+#   selectOne(cssSelector: str): HTMLElement
+#   selectAll(cssSelector: str, maxElements=100: integer): list<HTMLElement>
+#   selectUnique(cssSelector: str): HTMLElement
+#   js(javascript: str): any
+#   download(url: str, path: str)
+#   absolutifyUrl(potentially_relative_url: str): str
+#   focus()
+#   save_system(path_relative_to_save_dialog: str)
+#   save_beta(path: str)
 # CLASS METHODS
-#   download_basic(url: string, path: string, userAgent: string)
-#   persistentChromeBrowser(driverPath: string, userDataPath: string, profileDirectory: string): Browser
-#   parseURL(url: string): string
+#   absolutifyUrlRelativetoPage(potentially_relative_url: str, page_url: str): str
+#   download_basic(url: str, path: str, userAgent: str)
+#   persistentChromeBrowser(driverPath: str, userDataPath: str, profileDirectory: str): Browser
+#   parseURL(url: str): str
 class Browser:
   def __init__(self, browser):
     self._browser = browser
@@ -389,8 +407,10 @@ class Browser:
     return self._browser.execute_script(javascript)
 
   def download(self, url, path):
+    print('download("%s", "%s")' % (url, path))
     # TODO: Support cookies
     userAgent = self.driver().execute_script("return navigator.userAgent;")
+    url = self.absolutifyUrl(url)
     Browser.download_basic(url, path, userAgent)
 
   def seleniumElementForXPath(self, xpathExpression):
@@ -404,6 +424,86 @@ class Browser:
         "origin": '*',
         "storageTypes": 'all',
     })
+
+  def selectOne(self, cssSelector):
+    cssSelector = HTMLElement.escapeCssSelector(cssSelector)
+    self._reddingIDCounter += 1
+    results = self._browser.execute_script("""
+      let match = document.querySelector("%s");
+      if (match == undefined) {
+        return null;
+      }
+      let reddingID = match.getAttribute("redding_id");
+      if (reddingID == null) {
+        reddingID = %i;
+        match.setAttribute("redding_id", reddingID);
+      }
+      return [match.outerHTML, parseInt(reddingID)];
+    """ % (cssSelector, self._reddingIDCounter))
+    if results == -1:
+      raise Exception("Element was removed")
+    if results == None:
+      return None
+    html, reddingID = results
+    return HTMLElement(self, html, reddingID)
+
+  def selectAll(self, cssSelector, maxElements=100):
+    cssSelector = HTMLElement.escapeCssSelector(cssSelector)
+    self._reddingIDCounter += 1
+    results = self._browser.execute_script("""
+      document.querySelectorAll("%s");
+      let nextReddingID = %i;
+      let maxElements = %i;
+      if (matches.length > maxElements) {
+        return matches.length;
+      }
+      let rtn = [];
+      for (let match of matches) {
+        let reddingID = match.getAttribute("redding_id");
+        if (reddingID == null) {
+          reddingID = nextReddingID;
+          match.setAttribute("redding_id", reddingID);
+          ++nextReddingID;
+        }
+        rtn.push([match.outerHTML, parseInt(reddingID)]);
+      }
+      return rtn;
+    """ % (cssSelector, self._reddingIDCounter, maxElements))
+    if type(results) == int:
+      if results < 0:
+        raise Exception("Element was removed")
+      else:
+        raise Exception("Too many results (%i > %i) for selector (%s)" % (results, maxElements, cssSelector))
+    self._reddingIDCounter += len(results)
+    rtn = []
+    for result in results:
+      html, reddingID = result
+      rtn.append(HTMLElement(self, html, reddingID))
+    return rtn
+
+  def selectUnique(self, cssSelector):
+    cssSelector = HTMLElement.escapeCssSelector(cssSelector)
+    self._reddingIDCounter += 1
+    results = self._browser.execute_script("""
+      let matches = document.querySelectorAll("%s");
+      if (matches.length !== 1) {
+        return matches.length;
+      }
+      let match = matches[0];
+      let reddingID = match.getAttribute("redding_id");
+      if (reddingID == null) {
+        reddingID = %i;
+        match.setAttribute("redding_id", reddingID);
+      }
+      return [match.outerHTML, parseInt(reddingID)];
+    """ % (cssSelector, self._reddingIDCounter))
+    if type(results) == int:
+      if results < 0:
+        raise Exception("Element was removed")
+      else:
+        raise Exception("Wrong number (%i) of elements found for selector (%s)" % (results, cssSelector))
+    html, reddingID = results
+    return HTMLElement(self, html, reddingID)
 
   @classmethod
   # 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
@@ -436,14 +536,25 @@ class Browser:
 
   def absolutifyUrl(self, potentially_relative_url):
     page_url = self.js('return window.location.href;')
+    return Browser.absolutifyUrlRelativetoPage(potentially_relative_url, page_url)
+
+  @classmethod
+  def absolutifyUrlRelativetoPage(cls, potentially_relative_url, page_url):
     url = potentially_relative_url
     if url.startswith('http://') or url.startswith('https://'):
       return url
     page_url_info = urllib.parse.urlparse(page_url)
+    if url.startswith('//'):
+      return page_url_info.scheme + ':' + url
     if url.startswith('/'):
       # TODO: `page_url.hostname` or `page_url.netloc`
       return page_url_info.scheme + '://' + page_url_info.hostname + url
     page_dir = os.path.split(page_url_info.path)[0]
+    if url.startswith('./'):
+      url = url[2:]
+    if url.startswith('../'):
+      page_dir = '/'.join(page_dir.split('/')[:-1])
+      url = url[3:]
     return page_url_info.scheme + '://' + page_url_info.hostname + page_dir + '/' + url
 
   def focus(self):
@@ -453,22 +564,163 @@ class Browser:
     self._browser.set_window_rect(rect['x'], rect['y'], rect['width'], rect['height'])
 
   # https://stackoverflow.com/a/53966809
-  def bad_save(self, path_relative_to_save_dialog):
+  def save_system(self, path_relative_to_save_dialog):
     pyautogui.hotkey('command', 's')
     # First time will likely prompt user for OS permission.
     time.sleep(1)
     pyautogui.typewrite(path_relative_to_save_dialog)
     pyautogui.hotkey('enter')
 
-  def save(self, path):
-    assert False, "save() is not yet implemented"
-    # Steps
-    #   1. Save all images: https://stackoverflow.com/a/72036880.
-    #   2. Save all style sheets the same way.
-    #   3. Save the DOM after replacing those sources.
+  def save_page(self, path):
+    pd = PageDownloader(self, path)
 
 
 
+
+
+########## PageDownloader ##########
+
+class PageDownloader:
+  def __init__(self, browser, root):
+    assert root.endswith('/'), 'root ("%s") must end in a slash' % root
+    os.mkdir(root)
+    self._root = root
+    self._browser = browser
+    self._srcs = {} # absolute web browser URL -> local filesystem URL
+    html = self._browser.driver().page_source
+    dom = bs4.BeautifulSoup(html)
+    self._downloadImagesInRam()
+    self._downloadSrcsAndHrefs(dom)
+    with open(self._root + 'index.html', 'w') as f:
+      f.write(dom.decode())
+    self.recursively_download_stylesheets()
+
+  def _iterate(self, tag, fn):
+    fn(tag)
+    if tag.name is not None:
+      for child in tag.children:
+        self._iterate(child, fn)
+
+  def _downloadImagesInRam(self):
+    # Step 1: Save all images already in RAM.
+    imgs = self._browser.body().selectAll('img')
+    for img in imgs:
+      src = img.tree()['src']
+      if src.startswith('@'): continue
+      src = self._browser.absolutifyUrl(src)
+      if src not in self._srcs:
+        ext = self._extension_from_url(src)
+        self._srcs[src] = str(len(self._srcs)) + ext
+        try:
+          img.saveImageFromRAMAsPng(self._root + self._srcs[src])
+        except Exception as e:    
+          del self._srcs[src]
+          print('Skipping \"%s\" due to error:' % src)
+          print(e)
+          continue
+      img.js('self.setAttribute("src", "%s")' % ('@' + self._srcs[src]))
+
+  def _downloadSrcsAndHrefs(self, dom):
+    self._iterate(dom, lambda tag: self._handle_src_or_href(tag))
+    self._iterate(dom, lambda tag: self._strip_at_char(tag))
+
+  def _handle_src_or_href(self, tag):
+    if tag.name == 'img':
+      src = tag['src']
+      if src.startswith('@'):
+        return None
+      src = self._browser.absolutifyUrl(src)
+      ext = self._extension_from_url(src)
+      if src not in self._srcs:
+        self._srcs[src] = str(len(self._srcs)) + ext
+        self._browser.download(src, self._root + self._srcs[src])
+      tag['src'] = '@' + self._srcs[src]
+    elif tag.name == 'link':
+      attrs = tag.attrs
+      if 'stylesheet' not in attrs['rel']:
+        return None
+      if 'type' in attrs and attrs['type'] != 'text/css':
+        return None
+      href = tag['href']
+      if href.startswith('@'):
+        return None
+      href = self._browser.absolutifyUrl(href)
+      if href not in self._srcs:
+        self._srcs[href] = str(len(self._srcs)) + '.css'
+        self._browser.download(href, self._root + self._srcs[href])
+      tag['href'] = '@' + self._srcs[href]
+    elif tag.name == 'script':
+      attrs = tag.attrs
+      if 'src' not in attrs:
+        return None
+      src = attrs['src']
+      src = self._browser.absolutifyUrl(src)
+      if src not in self._srcs:
+        self._srcs[src] = str(len(self._srcs)) + '.js'
+        self._browser.download(src, self._root + self._srcs[src])
+      tag['src'] = '@' + self._srcs[src]
+
+  def _strip_at_char(self, tag):
+    if tag.name == 'img':
+      if tag['src'].startswith('@'):
+        tag['src'] = tag['src'][1:]
+    elif tag.name == 'link':
+      if tag['href'].startswith('@'):
+        tag['href'] = tag['href'][1:]
+    elif tag.name == 'script':
+      if tag['src'].startswith('@'):
+        tag['src'] = tag['src'][1:]
+
+  def recursively_download_stylesheets(self):
+    did_download_new_stylesheet = True
+    already_processed = set()
+    while did_download_new_stylesheet:
+      did_download_new_stylesheet = False
+      for filename in os.listdir(self._root):
+        if not filename.endswith('css'): continue
+        if filename in already_processed: continue
+        already_processed.add(filename)
+        file_url = None
+        for url in self._srcs:
+          if self._srcs[url] == filename:
+            file_url = url
+            break
+        if not file_url:
+          sys.exit(1)
+        with open(self._root + filename) as f:
+          contents = f.read()
+        urls_referenced = [match for match in re.finditer(r"""url\("[^"]+"\)|url\('[^']+'\)""", contents)]
+        new_urls = []
+        for url_referenced in urls_referenced:
+          s = url_referenced.group()
+          if '"' in s:
+            url_to_ref = s[s.index('"')+1:s.rindex('"')]
+          else:
+            url_to_ref = s[s.index("'")+1:s.rindex("'")]
+          url_to_ref = Browser.absolutifyUrlRelativetoPage(url_to_ref, file_url)
+          if url_to_ref not in self._srcs:
+            is_css = contents[:url_referenced.start()].endswith('@import ')
+            if is_css:
+              self._srcs[url_to_ref] = str(len(self._srcs) + 1000) + '.css'
+              self._browser.download(url_to_ref, self._root + self._srcs[url_to_ref])
+              did_download_new_stylesheet = True
+            else:
+              ext = self._extension_from_url(url_to_ref)
+              self._srcs[url_to_ref] = str(len(self._srcs) + 1000) + ext
+              self._browser.download(url_to_ref, self._root + self._srcs[url_to_ref])
+          new_urls.append(self._srcs[url_to_ref])
+        for i in range(len(urls_referenced)-1, -1, -1):
+          start, end = urls_referenced[i].span()
+          new_import = 'url("%s")' % new_urls[i]
+          contents = contents[:start] + new_import + contents[end:]
+        with open(self._root + filename, 'w') as f:
+          f.write(contents)
+
+  # TODO: Make this smarter.
+  def _extension_from_url(self, url):
+    if '?' in url:
+      url = url[:url.index('?')]
+    return os.path.splitext(url)[1]
 
 
 

@@ -9,6 +9,8 @@ import time
 import urllib.request
 import urllib.parse
 
+import pyautogui # pip3 install pyautogui
+
 ########## bs4 + selenium + urllib ##########
 
 # This library creates a set of HTMLElement objects.
@@ -444,6 +446,26 @@ class Browser:
     page_dir = os.path.split(page_url_info.path)[0]
     return page_url_info.scheme + '://' + page_url_info.hostname + page_dir + '/' + url
 
+  def focus(self):
+    rect = self._browser.get_window_rect()
+    self._browser.minimize_window()
+    self._browser.maximize_window()
+    self._browser.set_window_rect(rect['x'], rect['y'], rect['width'], rect['height'])
+
+  # https://stackoverflow.com/a/53966809
+  def bad_save(self, path_relative_to_save_dialog):
+    pyautogui.hotkey('command', 's')
+    # First time will likely prompt user for OS permission.
+    time.sleep(1)
+    pyautogui.typewrite(path_relative_to_save_dialog)
+    pyautogui.hotkey('enter')
+
+  def save(self, path):
+    assert False, "save() is not yet implemented"
+    # Steps
+    #   1. Save all images: https://stackoverflow.com/a/72036880.
+    #   2. Save all style sheets the same way.
+    #   3. Save the DOM after replacing those sources.
 
 
 

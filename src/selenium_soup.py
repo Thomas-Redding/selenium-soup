@@ -407,7 +407,6 @@ class Browser:
     return self._browser.execute_script(javascript)
 
   def download(self, url, path):
-    print('download("%s", "%s")' % (url, path))
     # TODO: Support cookies
     userAgent = self.driver().execute_script("return navigator.userAgent;")
     url = self.absolutifyUrl(url)
@@ -589,10 +588,10 @@ class PageDownloader:
     self._srcs = {} # absolute web browser URL -> local filesystem URL
     html = self._browser.driver().page_source
     dom = bs4.BeautifulSoup(html)
-    self._downloadImagesInRam()
+    self._saveImagesInRam()
     self._downloadSrcsAndHrefs(dom)
     with open(self._root + 'index.html', 'w') as f:
-      f.write(dom.decode())
+      f.write('<!DOCTYPE html>\n' + dom.decode())
     self.recursively_download_stylesheets()
 
   def _iterate(self, tag, fn):
@@ -601,7 +600,7 @@ class PageDownloader:
       for child in tag.children:
         self._iterate(child, fn)
 
-  def _downloadImagesInRam(self):
+  def _saveImagesInRam(self):
     # Step 1: Save all images already in RAM.
     imgs = self._browser.body().selectAll('img')
     for img in imgs:
@@ -631,9 +630,7 @@ class PageDownloader:
         return None
       src = self._browser.absolutifyUrl(src)
       ext = self._extension_from_url(src)
-      if src not in self._srcs:
-        self._srcs[src] = str(len(self._srcs)) + ext
-        self._browser.download(src, self._root + self._srcs[src])
+      self.try_download(src, ext)
       tag['src'] = '@' + self._srcs[src]
     elif tag.name == 'link':
       attrs = tag.attrs
@@ -645,9 +642,7 @@ class PageDownloader:
       if href.startswith('@'):
         return None
       href = self._browser.absolutifyUrl(href)
-      if href not in self._srcs:
-        self._srcs[href] = str(len(self._srcs)) + '.css'
-        self._browser.download(href, self._root + self._srcs[href])
+      self.try_download(href, '.css')
       tag['href'] = '@' + self._srcs[href]
     elif tag.name == 'script':
       attrs = tag.attrs
@@ -655,20 +650,21 @@ class PageDownloader:
         return None
       src = attrs['src']
       src = self._browser.absolutifyUrl(src)
-      if src not in self._srcs:
-        self._srcs[src] = str(len(self._srcs)) + '.js'
-        self._browser.download(src, self._root + self._srcs[src])
+      self.try_download(src, '.js')
       tag['src'] = '@' + self._srcs[src]
 
   def _strip_at_char(self, tag):
+    if tag.name is None:
+      return None
+    attrs = tag.attrs
     if tag.name == 'img':
-      if tag['src'].startswith('@'):
+      if 'src' in attrs and tag['src'].startswith('@'):
         tag['src'] = tag['src'][1:]
     elif tag.name == 'link':
-      if tag['href'].startswith('@'):
+      if 'href' in attrs and tag['href'].startswith('@'):
         tag['href'] = tag['href'][1:]
     elif tag.name == 'script':
-      if tag['src'].startswith('@'):
+      if 'src' in attrs and tag['src'].startswith('@'):
         tag['src'] = tag['src'][1:]
 
   def recursively_download_stylesheets(self):
@@ -701,13 +697,11 @@ class PageDownloader:
           if url_to_ref not in self._srcs:
             is_css = contents[:url_referenced.start()].endswith('@import ')
             if is_css:
-              self._srcs[url_to_ref] = str(len(self._srcs) + 1000) + '.css'
-              self._browser.download(url_to_ref, self._root + self._srcs[url_to_ref])
+              self.try_download(url_to_ref, '.css')
               did_download_new_stylesheet = True
             else:
               ext = self._extension_from_url(url_to_ref)
-              self._srcs[url_to_ref] = str(len(self._srcs) + 1000) + ext
-              self._browser.download(url_to_ref, self._root + self._srcs[url_to_ref])
+              self.try_download(url_to_ref, ext)
           new_urls.append(self._srcs[url_to_ref])
         for i in range(len(urls_referenced)-1, -1, -1):
           start, end = urls_referenced[i].span()
@@ -721,6 +715,17 @@ class PageDownloader:
     if '?' in url:
       url = url[:url.index('?')]
     return os.path.splitext(url)[1]
+
+  def try_download(self, absolute_url, ext):
+    if absolute_url in self._srcs:
+      return None
+    self._srcs[absolute_url] = str(len(self._srcs)) + ext
+    try:
+      self._browser.download(absolute_url, self._root + self._srcs[absolute_url])
+    except:
+      # Accept some failure.
+      del self._srcs[absolute_url]
+      pass
 
 
 

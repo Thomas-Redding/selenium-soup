@@ -556,6 +556,8 @@ class Browser:
     while url.startswith('../'):
       page_dir = '/'.join(page_dir.split('/')[:-1])
       url = url[3:]
+    if page_dir == '/':
+      page_dir = ''
     return page_url_info.scheme + '://' + page_url_info.hostname + page_dir + '/' + url
 
   def focus(self):
@@ -875,3 +877,27 @@ def empty(iterator):
   for x in iterator:
     return False
   return True
+
+
+
+
+
+########## tests ##########
+
+def assert_url_good(page_url, rel_path, exp):
+  guess = Browser.absolutifyUrlRelativetoPage(rel_path, page_url)
+  assert guess == exp, (page_url, rel_path, guess, exp)
+
+assert_url_good('https://abc.xyz/foo/bar/index.html', 'img.jpg', 'https://abc.xyz/foo/bar/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/', 'img.jpg', 'https://abc.xyz/foo/bar/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/index.html', './img.jpg', 'https://abc.xyz/foo/bar/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/', './img.jpg', 'https://abc.xyz/foo/bar/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/index.html', '/img.jpg', 'https://abc.xyz/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/', '/img.jpg', 'https://abc.xyz/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/index.html', '../img.jpg', 'https://abc.xyz/foo/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/', '../img.jpg', 'https://abc.xyz/foo/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/index.html', '../../img.jpg', 'https://abc.xyz/img.jpg')
+assert_url_good('https://abc.xyz/foo/bar/', '../../img.jpg', 'https://abc.xyz/img.jpg')
+assert_url_good('https://www.girlspns.com/index.html', 'img.jpg', 'https://www.girlspns.com/img.jpg')
+assert_url_good('https://www.girlspns.com/index.html', './img.jpg', 'https://www.girlspns.com/img.jpg')
+assert_url_good('https://www.girlspns.com/index.html', '/img.jpg', 'https://www.girlspns.com/img.jpg')

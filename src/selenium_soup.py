@@ -553,8 +553,7 @@ class Browser:
     page_dir = os.path.split(page_url_info.path)[0]
     if url.startswith('./'):
       url = url[2:]
-    if url.startswith('../'):
-      # TODO: Improve this.
+    while url.startswith('../'):
       page_dir = '/'.join(page_dir.split('/')[:-1])
       url = url[3:]
     return page_url_info.scheme + '://' + page_url_info.hostname + page_dir + '/' + url
@@ -777,6 +776,7 @@ class CacheServer:
     self.internet_enabled = True
 
   def _request_interceptor(self, request):
+    print(request.url in self._index, self.internet_enabled, request.url)
     if request.url not in self._index:
       if not self.internet_enabled:
         request.create_response(status_code=404, headers=[], body=b'')
@@ -806,8 +806,11 @@ class CacheServer:
   def contains(self, url):
     return url in self._index
 
-  def all_status_codes(self):
-    return {url: self._index[url]['status_code'] for url in self._index}
+  def urls(self):
+    return list(self._index.keys())
+
+  def metadata(self, url):
+    return json.loads(json.dumps(self._index[url]))
 
   def next_file_name(self):
     indices = set()

@@ -754,6 +754,9 @@ class PageDownloader:
 # driver.get('http://xkcd.com/') # hit CacheServer for most requests
 # cs.internet_enabled = False
 # driver.get('http://xkcd.com/') # hit CacheServer or throw 404
+# 
+# # Note: due to browser limitations, you do still need to be connected
+# # to the internet even if `internet_enabled` is `False`.
 #
 class CacheServer:
   def __init__(self, driver, root):
@@ -787,19 +790,33 @@ class CacheServer:
     assert response == request.response
     if request.url in self._index: return None
     if not self.internet_enabled: return None
-    headers = {pair[0]:pair[1] for pair in response.headers}
+    data = seleniumwire.utils.decode(response.body, response.headers.get('Content-Encoding', 'identity'))
+    with open(self._root + self._index[request.url]['body'], 'wb') as f:
+      f.write(data)
     self._index[request.url] = {
       'status_code': response.status_code,
       'headers': response.headers.items(), # list<[str, str]>
       'body': str(len(self._index)),
     }
-    data = seleniumwire.utils.decode(response.body, response.headers.get('Content-Encoding', 'identity'))
-    with open(self._root + self._index[request.url]['body'], 'wb') as f:
-      f.write(data)
 
-  # def remove(self, url):
-  #   os.remove(self._index[url]['body'])
-  #   del self._index[url]
+  def remove(self, url):
+    del self._index[url]
+    os.remove(self._index[url]['body'])
+
+  def contains(self, url):
+    return url in self._index
+
+  def all_status_codes(self):
+    return {url: self._index[url]['status_code'] for url in self._index}
+
+  def next_file_name(self):
+    indices = set()
+    for url in self._index:
+      indices.add(int(self._index[url]['body']))
+    for i in range(len(indices)):
+      if i not in indices:
+        return i
+    return len(indices)
 
   def save(self):
     with open(self._root + 'index.json', 'w') as f:

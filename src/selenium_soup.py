@@ -1,12 +1,14 @@
 
 import base64
 import bs4
+import json
 import os
 import pyautogui # pip3 install pyautogui
 import re
 import selenium.webdriver.support.expected_conditions
 import selenium.webdriver.support.ui
 import selenium.webdriver.common.by
+import seleniumwire.utils
 import time
 import urllib.request
 import urllib.parse
@@ -552,6 +554,7 @@ class Browser:
     if url.startswith('./'):
       url = url[2:]
     if url.startswith('../'):
+      # TODO: Improve this.
       page_dir = '/'.join(page_dir.split('/')[:-1])
       url = url[3:]
     return page_url_info.scheme + '://' + page_url_info.hostname + page_dir + '/' + url
@@ -630,8 +633,8 @@ class PageDownloader:
         return None
       src = self._browser.absolutifyUrl(src)
       ext = self._extension_from_url(src)
-      self.try_download(src, ext)
-      tag['src'] = '@' + self._srcs[src]
+      if self.try_download(src, ext):
+        tag['src'] = '@' + self._srcs[src]
     elif tag.name == 'link':
       attrs = tag.attrs
       if 'stylesheet' not in attrs['rel']:
@@ -642,16 +645,16 @@ class PageDownloader:
       if href.startswith('@'):
         return None
       href = self._browser.absolutifyUrl(href)
-      self.try_download(href, '.css')
-      tag['href'] = '@' + self._srcs[href]
+      if self.try_download(href, '.css'):
+        tag['href'] = '@' + self._srcs[href]
     elif tag.name == 'script':
       attrs = tag.attrs
       if 'src' not in attrs:
         return None
       src = attrs['src']
       src = self._browser.absolutifyUrl(src)
-      self.try_download(src, '.js')
-      tag['src'] = '@' + self._srcs[src]
+      if self.try_download(src, '.js'):
+        tag['src'] = '@' + self._srcs[src]
 
   def _strip_at_char(self, tag):
     if tag.name is None:
@@ -716,16 +719,91 @@ class PageDownloader:
       url = url[:url.index('?')]
     return os.path.splitext(url)[1]
 
+  # returns True iff this resource is downloaded by the end of this function call
+  # (i.e. if the resource was already downloaded, it still returns True)
   def try_download(self, absolute_url, ext):
     if absolute_url in self._srcs:
-      return None
+      return True
     self._srcs[absolute_url] = str(len(self._srcs)) + ext
     try:
       self._browser.download(absolute_url, self._root + self._srcs[absolute_url])
+      return True
     except:
       # Accept some failure.
       del self._srcs[absolute_url]
-      pass
+      return False
+
+
+
+
+
+#########
+
+# import seleniumwire.webdriver
+# driver = seleniumwire.webdriver.Firefox()
+# cs = CacheServer(driver, 'cache/')
+# driver.get('http://xkcd.com/')
+# cs.save()
+#
+# # Quit scraper.
+# # Later...
+#
+# import seleniumwire.webdriver
+# driver = seleniumwire.webdriver.Firefox()
+# cs = CacheServer(driver, 'cache/')
+# driver.get('http://xkcd.com/') # hit CacheServer for most requests
+# cs.internet_enabled = False
+# driver.get('http://xkcd.com/') # hit CacheServer or throw 404
+#
+class CacheServer:
+  def __init__(self, driver, root):
+    assert root.endswith('/')
+    self._root = root
+    if os.path.exists(self._root):
+      assert os.path.isdir(self._root)
+    else:
+      os.mkdir(root)
+    if os.path.exists(self._root + 'index.json'):
+      assert os.path.isfile(self._root + 'index.json')
+      with open(self._root + 'index.json') as f:
+        self._index = json.load(f)
+    else:
+      self._index = {}
+    driver.request_interceptor = lambda request: self._request_interceptor(request)
+    driver.response_interceptor = lambda request, response: self._response_interceptor(request, response)
+    self.internet_enabled = True
+
+  def _request_interceptor(self, request):
+    if request.url not in self._index:
+      if not self.internet_enabled:
+        request.create_response(status_code=404, headers=[], body=b'')
+      return None
+    resp = self._index[request.url]
+    with open(self._root + resp['body'], 'rb') as f:
+      body = f.read()
+    request.create_response(status_code=resp['status_code'], headers=resp['headers'], body=body)
+
+  def _response_interceptor(self, request, response):
+    assert response == request.response
+    if request.url in self._index: return None
+    headers = {pair[0]:pair[1] for pair in response.headers}
+    self._index[request.url] = {
+      'status_code': response.status_code,
+      'headers': response.headers.items(), # list<[str, str]>
+      'body': str(len(self._index)),
+    }
+    data = seleniumwire.utils.decode(response.body, response.headers.get('Content-Encoding', 'identity'))
+    with open(self._root + self._index[request.url]['body'], 'wb') as f:
+      f.write(data)
+
+  def remove(self, url):
+    os.remove(self._index[url]['body'])
+    del self._index[url]
+
+  def save(self):
+    with open(self._root + 'index.json', 'w') as f:
+      json.dump(self._index, f)
+
 
 
 

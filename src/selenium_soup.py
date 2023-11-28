@@ -786,6 +786,7 @@ class CacheServer:
   def _response_interceptor(self, request, response):
     assert response == request.response
     if request.url in self._index: return None
+    if not self.internet_enabled: return None
     headers = {pair[0]:pair[1] for pair in response.headers}
     self._index[request.url] = {
       'status_code': response.status_code,

@@ -797,9 +797,9 @@ class CacheServer:
     with open(self._root + self._index[request.url]['body'], 'wb') as f:
       f.write(data)
 
-  def remove(self, url):
-    os.remove(self._index[url]['body'])
-    del self._index[url]
+  # def remove(self, url):
+  #   os.remove(self._index[url]['body'])
+  #   del self._index[url]
 
   def save(self):
     with open(self._root + 'index.json', 'w') as f:

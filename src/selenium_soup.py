@@ -176,7 +176,6 @@ class HTMLElement:
     rtn = []
     for result in results:
       html, reddingID = result
-      print(reddingID, html)
       if reddingID is None:
         rtn.append(html)
       else:
@@ -850,7 +849,6 @@ class CacheServer:
     self.internet_enabled = True
 
   def _request_interceptor(self, request):
-    print(request.url in self._index, self.internet_enabled, request.url)
     if request.url not in self._index:
       if not self.internet_enabled:
         request.create_response(status_code=404, headers=[], body=b'')

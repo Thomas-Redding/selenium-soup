@@ -111,6 +111,78 @@ class HTMLElement:
       raise Exception("Element was removed")
     self._tree = bs4.BeautifulSoup(results, 'html.parser')
 
+  def children(self):
+    self._browser._reddingIDCounter += 1
+    results = self._browser._browser.execute_script("""
+      let mes = document.querySelectorAll('[redding_id="%i"]');
+      if (mes.length !== 1) {
+        return -1;
+      }
+      let me = mes[0];
+      let nextReddingID = %i;
+      let rtn = [];
+      for (let i = 0; i < me.children.length; ++i) {
+        let reddingID = me.children[i].getAttribute("redding_id");
+        if (reddingID == null) {
+          me.children[i].setAttribute("redding_id", nextReddingID);
+          ++nextReddingID;
+        }
+        rtn.push([me.children[i].outerHTML, parseInt(me.children[i].getAttribute("redding_id"))]);
+      }
+      return rtn;
+    """ % (self._reddingID, self._browser._reddingIDCounter))
+    if type(results) == int:
+      if results < 0:
+        raise Exception("Element was removed")
+      else:
+        raise Exception("Unknown issue")
+    self._browser._reddingIDCounter += len(results)
+    rtn = []
+    for result in results:
+      html, reddingID = result
+      rtn.append(HTMLElement(self._browser, html, reddingID))
+    return rtn
+
+  def childNodes(self):
+    self._browser._reddingIDCounter += 1
+    results = self._browser._browser.execute_script("""
+      let mes = document.querySelectorAll('[redding_id="%i"]');
+      if (mes.length !== 1) {
+        return -1;
+      }
+      let me = mes[0];
+      let nextReddingID = %i;
+      let rtn = [];
+      for (let i = 0; i < me.childNodes.length; ++i) {
+        if (me.childNodes[i].tagName === undefined) {
+          rtn.push([me.childNodes[i].textContent, null]);
+        } else {
+          let reddingID = me.childNodes[i].getAttribute("redding_id");
+          if (reddingID == null) {
+            me.childNodes[i].setAttribute("redding_id", nextReddingID);
+            ++nextReddingID;
+          }
+          rtn.push([me.childNodes[i].outerHTML, parseInt(me.childNodes[i].getAttribute("redding_id"))]);
+        }
+      }
+      return rtn;
+    """ % (self._reddingID, self._browser._reddingIDCounter))
+    if type(results) == int:
+      if results < 0:
+        raise Exception("Element was removed")
+      else:
+        raise Exception("Unknown issue")
+    self._browser._reddingIDCounter += len(results)
+    rtn = []
+    for result in results:
+      html, reddingID = result
+      print(reddingID, html)
+      if reddingID is None:
+        rtn.append(html)
+      else:
+        rtn.append(HTMLElement(self._browser, html, reddingID))
+    return rtn
+
   def selectOne(self, cssSelector):
     cssSelector = HTMLElement.escapeCssSelector(cssSelector)
     self._browser._reddingIDCounter += 1

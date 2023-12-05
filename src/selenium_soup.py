@@ -863,12 +863,13 @@ class CacheServer:
     if request.url in self._index: return None
     if not self.internet_enabled: return None
     data = seleniumwire.utils.decode(response.body, response.headers.get('Content-Encoding', 'identity'))
-    with open(self._root + self._index[request.url]['body'], 'wb') as f:
+    file_name = self.next_file_name()
+    with open(self._root + file_name, 'wb') as f:
       f.write(data)
     self._index[request.url] = {
       'status_code': response.status_code,
       'headers': response.headers.items(), # list<[str, str]>
-      'body': str(len(self._index)),
+      'body': file_name,
     }
 
   def remove(self, url):
@@ -890,8 +891,8 @@ class CacheServer:
       indices.add(int(self._index[url]['body']))
     for i in range(len(indices)):
       if i not in indices:
-        return i
-    return len(indices)
+        return str(i)
+    return str(len(indices))
 
   def save(self):
     with open(self._root + 'index.json', 'w') as f:

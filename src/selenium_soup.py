@@ -67,12 +67,6 @@ class HTMLElement:
       self._driverElement = driver.find_element(selenium.webdriver.common.by.By.CSS_SELECTOR, '[redding_id="%i"]' % self._reddingID)
     return self._driverElement
 
-  def seleniumElementForXPath(self, xpathExpression):
-    return self.driver().find_element(selenium.webdriver.common.by.By.XPATH, xpathExpression)
-
-  def seleniumElementsForXPath(self, xpathExpression):
-    return self.driver().find_elements(selenium.webdriver.common.by.By.XPATH, xpathExpression)
-
   def parent(self):
     self._browser._reddingIDCounter += 1
     results = self._browser._browser.execute_script("""
@@ -423,14 +417,15 @@ class Browser:
     self._body = None
     self._lastUserAgent = None
 
-  def navigateTo(self, url, timeOut=10):
+  def navigateTo(self, url, timeOut=10, extraTime=0.5):
     self._reddingIDCounter = 0
     self._body = None
     self._browser.get(url)
-    self.waitForPageToLoad(timeOut)
+    self.waitForPageToLoad(timeOut, extraTime=0.5)
 
-  def waitForPageToLoad(self, timeOut):
+  def waitForPageToLoad(self, timeOut, extraTime=0.5):
     self.withFor(timeOut, lambda browser: browser.js('return document.readyState;') == 'complete')
+    time.sleep(extraTime)
 
   def withFor(self, timeOut, fn):
     # Wait for the page to load.
@@ -441,14 +436,13 @@ class Browser:
         assert False, "Took more than %i seconds to load the page" % timeOut
       time.sleep(0.1)
       if fn(self): break
-    time.sleep(0.5) # just in case
 
   def waitForSelector(self, cssSelector, timeOut=10):
     return selenium.webdriver.support.ui.WebDriverWait(self._browser, timeOut).until(selenium.webdriver.support.expected_conditions.presence_of_element_located((selenium.webdriver.common.by.By.CSS_SELECTOR, cssSelector)))
 
-  def body(self, force=False):
+  def body(self, noCache=False):
     # If the body is cached and hasn't been replaced by a page-navigations, just return it.
-    if force:
+    if noCache:
       self._body = None
     if self._body:
       reddingID = self._browser.execute_script("""
@@ -472,10 +466,6 @@ class Browser:
   def driver(self):
     return self._browser
 
-  # deprecated
-  def webDriver(self):
-    return self._browser
-
   def js(self, javascript):
     return self._browser.execute_script(javascript)
 
@@ -484,18 +474,6 @@ class Browser:
     userAgent = self.driver().execute_script("return navigator.userAgent;")
     url = self.absolutifyUrl(url)
     Browser.download_basic(url, path, userAgent)
-
-  def seleniumElementForXPath(self, xpathExpression):
-    return self.driver().find_element(selenium.webdriver.common.by.By.XPATH, xpathExpression)
-
-  def seleniumElementsForXPath(self, xpathExpression):
-    return self.driver().find_elements(selenium.webdriver.common.by.By.XPATH, xpathExpression)
-
-  def clearBrowserData(self):
-    self._browser.execute_cdp_cmd('Storage.clearDataForOrigin', {
-        "origin": '*',
-        "storageTypes": 'all',
-    })
 
   def selectOne(self, cssSelector):
     cssSelector = HTMLElement.escapeCssSelector(cssSelector)
@@ -873,8 +851,9 @@ class CacheServer:
     }
 
   def remove(self, url):
+    body = self._index[url]['body']
     del self._index[url]
-    os.remove(self._index[url]['body'])
+    os.remove(self._root + body)
 
   def contains(self, url):
     return url in self._index

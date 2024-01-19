@@ -378,8 +378,8 @@ class HTMLElement:
   def saveImageFromRAMAsPng(self, path):
     assert self._tree.name == 'img'
     # https://stackoverflow.com/a/61061867
-    self._browser._setImageCrossOriginToAnonymous()
     script = """
+      self.setAttribute('crossOrigin', 'anonymous');
       var c = document.createElement('canvas');
       var ctx = c.getContext('2d');
       c.height = self.naturalHeight;
@@ -394,11 +394,27 @@ class HTMLElement:
     with open(path, "wb") as f:
       f.write(imageData)
 
+  # TODO: Test this.
+  def waitForImageToLoad(timeout=0):
+    self.js("""
+      if (self.complete) {
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        setTimeout(_ => {
+          resolve();
+        }, %i);
+        image.addEventListener('onload', _ => {
+          resolve();
+        })
+      });
+      return;
+    """ % timeout)
+
   # Consider saving the image as a png, jpeg, or webp. Actually save whichever is smallest.
   # TODO: Test.
   def saveImageFromRAM(self, path):
     assert self._tree.name == 'img'
-    self._browser._setImageCrossOriginToAnonymous()
     # https://stackoverflow.com/a/61061867
     script = """
       {
@@ -427,8 +443,13 @@ class HTMLElement:
 
         let promises = [];
         let types = ['png', 'jpeg', 'webp'];
+        self.setAttribute('crossOrigin', 'anonymous');
         info['times'] = [];
         info['times'].push(['start', new Date().getTime()]);
+        if (!self.complete) {
+          info['error'] = 'image was not finished loading';
+          return [null, null, info];
+        }
         for (let type in types) {
           promises.push(blobFromImage(self, type));
         }
@@ -437,16 +458,22 @@ class HTMLElement:
           let minSize = 1e200;
           let minIndex = -1;
           for (let i = 0; i < blobs.length; ++i) {
-            if (blobs[i].size < minSize) {
+            if (blobs[i] != null && blobs[i].size < minSize) {
               minSize = blobs[i].size;
               minIndex = i;
             }
           }
           if (minIndex == -1) {
+            if (!('error' in info)) {
+              info['error'] = 'failed to generate any blobs';
+            }
             return null;
           }
           return [types[minIndex], blobs[minIndex]]
         }).then(type_blob => {
+          if (type_blob == null) {
+            return null;
+          }
           info['times'].push(['selected', new Date().getTime() - info['times'][0][1]]);
           return new Promise((resolve, reject) => {
             let reader = new FileReader();
@@ -457,6 +484,12 @@ class HTMLElement:
             reader.readAsArrayBuffer(type_blob[1]);
           });
         }).then(type_arrayBuffer => {
+          if (type_arrayBuffer == null) {
+            if (!('error' in info)) {
+              info['error'] = 'failed to convert blob to ArrayBuffer';
+            }
+            return [null, null, info];
+          }
           let base64String = base64FromArrayBuffer(type_arrayBuffer[1]);
           info['times'].push(['stringed', new Date().getTime() - info['times'][0][1]]);
           return [type_arrayBuffer[0], base64String, info];
@@ -470,16 +503,20 @@ class HTMLElement:
     #    8 ms - [info] converting ArrayBuffer to base64 string
     #    7 ms - getting the data to and from the browser
     results = self.js(script)
+    if not results:
+      return None, 'Unknown error'
     assert len(results) == 3, results
     extension, base64String, info = results
-    print(info)
+    if extension is None:
+      assert base64String is None
+      assert 'error' in info
+      return None, info['error']
     #    0 ms - converting from `base64String` to `data`.
     data = base64.b64decode(base64String)
-    d = time.time()
     #    0 ms - writing to file
     with open(path + '.' + extension, "wb") as f:
       f.write(data)
-    e = time.time()
+    return extension, None
 
 
 
@@ -565,31 +602,6 @@ class Browser:
 
   def js(self, javascript):
     return self._browser.execute_script(javascript)
-
-  def _setImageCrossOriginToAnonymous(self):
-    # If we don't set `crossOrigin`, we often run into this error:
-    # ```
-    # SecurityError: The operation is insecure
-    # ```
-    # For reasons known only to gods, we still run into the above error
-    # unless we wait after setting `crossOrigin`. The amount of time to
-    # wait (350ms) was determined empirically.
-    self.js("""
-      return new Promise((resolve, reject) => {
-        let didSet = false;
-        for (let img of document.getElementsByTagName("img")) {
-           if (img.getAttribute('crossOrigin') != 'anonymous') {
-             img.setAttribute('crossOrigin', 'anonymous');
-             didSet = true;
-           }
-        }
-        if (didSet) {
-          setTimeout(_ => { resolve(true) }, 350);
-        } else {
-          resolve(true);
-        }
-      });
-    """)
 
   def download(self, url, path):
     userAgent = self._browser.execute_script("return navigator.userAgent;")

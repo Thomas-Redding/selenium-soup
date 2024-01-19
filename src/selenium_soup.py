@@ -8,10 +8,13 @@ import re
 import selenium.webdriver.support.expected_conditions
 import selenium.webdriver.support.ui
 import selenium.webdriver.common.by
+import seleniumwire.webdriver
 import seleniumwire.utils
+import sqlite3
 import time
 import urllib.request
 import urllib.parse
+import threading
 
 ########## bs4 + selenium + urllib ##########
 
@@ -46,10 +49,15 @@ class HTMLElement:
     self._browser = browser
     self._tree = bs4.BeautifulSoup(html, 'html.parser')
     if self._tree.name == '[document]':
-      # Consider `== bs4.element.Tag` instead
+      # TODO: Consider `== bs4.element.Tag` instead.
       tmp = list(filter(lambda x: type(x) != bs4.element.NavigableString, self._tree.children))
-      assert len(tmp) == 1
-      self._tree = tmp[0]
+      if len(tmp) == 2:
+        # This is very rare and poorly understood.
+        # https://asstr.xyz/files/Authors/TheMysteriousMrLeeOrganization/
+        self._tree = tmp[0]
+      else:
+        assert len(tmp) == 1
+        self._tree = tmp[0]
     else:
       print('QQ', self._tree.name)
     self._reddingID = reddingID
@@ -370,6 +378,7 @@ class HTMLElement:
   def saveImageFromRAMAsPng(self, path):
     assert self._tree.name == 'img'
     # https://stackoverflow.com/a/61061867
+    self._browser._setImageCrossOriginToAnonymous()
     script = """
       var c = document.createElement('canvas');
       var ctx = c.getContext('2d');
@@ -384,6 +393,94 @@ class HTMLElement:
     imageData = base64.b64decode(base64String[len('data:image/png;base64,'):])
     with open(path, "wb") as f:
       f.write(imageData)
+
+  # Consider saving the image as a png, jpeg, or webp. Actually save whichever is smallest.
+  # TODO: Test.
+  def saveImageFromRAM(self, path):
+    assert self._tree.name == 'img'
+    self._browser._setImageCrossOriginToAnonymous()
+    # https://stackoverflow.com/a/61061867
+    script = """
+      {
+        let info = {};
+
+        let blobFromImage = (img, type) => {
+          let canvas = document.createElement('canvas');
+          let context = canvas.getContext('2d');
+          canvas.height = img.naturalHeight;
+          canvas.width = img.naturalWidth;
+          context.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+          return new Promise((resolve, reject) => {
+            canvas.toBlob(blob => {resolve(blob);}, 'image/' + type)
+          });
+        };
+
+        let base64FromArrayBuffer = (arrayBuffer) => {
+          let binary = '';
+          const bytes = new Uint8Array(arrayBuffer);
+          const len = bytes.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return window.btoa(binary);
+        };
+
+        let promises = [];
+        let types = ['png', 'jpeg', 'webp'];
+        info['times'] = [];
+        info['times'].push(['start', new Date().getTime()]);
+        for (let type in types) {
+          promises.push(blobFromImage(self, type));
+        }
+        return Promise.all(promises).then(blobs => {
+          info['times'].push(['blobed', new Date().getTime() - info['times'][0][1]]);
+          let minSize = 1e200;
+          let minIndex = -1;
+          for (let i = 0; i < blobs.length; ++i) {
+            if (blobs[i].size < minSize) {
+              minSize = blobs[i].size;
+              minIndex = i;
+            }
+          }
+          if (minIndex == -1) {
+            return null;
+          }
+          return [types[minIndex], blobs[minIndex]]
+        }).then(type_blob => {
+          info['times'].push(['selected', new Date().getTime() - info['times'][0][1]]);
+          return new Promise((resolve, reject) => {
+            let reader = new FileReader();
+            reader.addEventListener("loadend", function() {
+               info['times'].push(['arrayed', new Date().getTime() - info['times'][0][1]]);
+               resolve([type_blob[0], reader.result])
+            });
+            reader.readAsArrayBuffer(type_blob[1]);
+          });
+        }).then(type_arrayBuffer => {
+          let base64String = base64FromArrayBuffer(type_arrayBuffer[1]);
+          info['times'].push(['stringed', new Date().getTime() - info['times'][0][1]]);
+          return [type_arrayBuffer[0], base64String, info];
+        });
+      }
+      """
+    # Example time allocation:
+    #   13 ms - [info] converting the image into a Blob
+    #    0 ms - [info] selecting a Blob
+    #    0 ms - [info] converting Blob to ArrayBuffer
+    #    8 ms - [info] converting ArrayBuffer to base64 string
+    #    7 ms - getting the data to and from the browser
+    results = self.js(script)
+    assert len(results) == 3, results
+    extension, base64String, info = results
+    print(info)
+    #    0 ms - converting from `base64String` to `data`.
+    data = base64.b64decode(base64String)
+    d = time.time()
+    #    0 ms - writing to file
+    with open(path + '.' + extension, "wb") as f:
+      f.write(data)
+    e = time.time()
+
 
 
 
@@ -469,11 +566,36 @@ class Browser:
   def js(self, javascript):
     return self._browser.execute_script(javascript)
 
+  def _setImageCrossOriginToAnonymous(self):
+    # If we don't set `crossOrigin`, we often run into this error:
+    # ```
+    # SecurityError: The operation is insecure
+    # ```
+    # For reasons known only to gods, we still run into the above error
+    # unless we wait after setting `crossOrigin`. The amount of time to
+    # wait (350ms) was determined empirically.
+    self.js("""
+      return new Promise((resolve, reject) => {
+        let didSet = false;
+        for (let img of document.getElementsByTagName("img")) {
+           if (img.getAttribute('crossOrigin') != 'anonymous') {
+             img.setAttribute('crossOrigin', 'anonymous');
+             didSet = true;
+           }
+        }
+        if (didSet) {
+          setTimeout(_ => { resolve(true) }, 350);
+        } else {
+          resolve(true);
+        }
+      });
+    """)
+
   def download(self, url, path):
-    # TODO: Support cookies
-    userAgent = self.driver().execute_script("return navigator.userAgent;")
+    userAgent = self._browser.execute_script("return navigator.userAgent;")
     url = self.absolutifyUrl(url)
-    Browser.download_basic(url, path, userAgent)
+    cookies = self._browser.get_cookies()
+    Browser.download_basic(url, path, userAgent, cookies)
 
   def selectOne(self, cssSelector):
     cssSelector = HTMLElement.escapeCssSelector(cssSelector)
@@ -557,13 +679,23 @@ class Browser:
 
   @classmethod
   # 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
-  def download_basic(cls, url, path, userAgent=None):
+  def download_basic(cls, url, path, userAgent=None, cookies=None):
+    headers = []
     if userAgent:
-      headers = {'User-Agent': userAgent}
-      opener = urllib.request.build_opener()
-      opener.addheaders = [('User-agent', userAgent)]
-      urllib.request.install_opener(opener)
+      headers.append(('User-Agent', userAgent))
+    if cookies:
+      cookiesStr = ''
+      for cookie in cookies:
+        # TODO: This probably needs to be improved.
+        cookieStr = cookie['name'] + '=' + cookie['value'] + ';'
+        cookiesStr += cookieStr
+      headers.append(('Cookie', cookiesStr))
+    opener = urllib.request.build_opener()
+    opener.addheaders = headers
+    urllib.request.install_opener(opener)
     urllib.request.urlretrieve(url, path)
+
+
 
   # Open up Chrome browser with persistent user data.
   # For this to work, you must first quit Google Chrome.
@@ -573,12 +705,19 @@ class Browser:
   # @param profileDirectory - 'tester'
   # TODO: Investigate using 'Default' as `profileDirectory`.
   @classmethod
-  def persistentChromeBrowser(cls, driverPath, userDataPath, profileDirectory):
+  def persistentChromeDriver(cls, driverPath, userDataPath, profileDirectory):
     options = selenium.webdriver.chrome.options.Options()
     options.add_argument("user-data-dir=%s" % userDataPath)
     options.add_argument('profile-directory=%s' % profileDirectory)
-    c = selenium.webdriver.Chrome(executable_path=driverPath, chrome_options=options)
-    return Browser(c)
+    return selenium.webdriver.Chrome(executable_path=driverPath, chrome_options=options)
+
+  # TODO: Test
+  @classmethod
+  def persistentWireChromeDriver(cls, driverPath, userDataPath, profileDirectory):
+    options = selenium.webdriver.chrome.options.Options()
+    options.add_argument("user-data-dir=%s" % userDataPath)
+    options.add_argument('profile-directory=%s' % profileDirectory)
+    return seleniumwire.webdriver.Chrome(executable_path=driverPath, chrome_options=options)
 
   @classmethod
   def parseURL(cls, url):
@@ -616,23 +755,24 @@ class Browser:
     self._browser.set_window_rect(rect['x'], rect['y'], rect['width'], rect['height'])
 
   # https://stackoverflow.com/a/53966809
-  def save_system(self, path_relative_to_save_dialog):
+  def save_page_system(self, path_relative_to_save_dialog):
     pyautogui.hotkey('command', 's')
     # First time will likely prompt user for OS permission.
     time.sleep(1)
     pyautogui.typewrite(path_relative_to_save_dialog)
     pyautogui.hotkey('enter')
 
-  def save_page(self, path):
-    pd = PageDownloader(self, path)
+  def save_page_recursive(self, path):
+    pd = PageRecursiveDownloader(self, path)
 
 
 
 
 
-########## PageDownloader ##########
+########## PageRecursiveDownloader ##########
 
-class PageDownloader:
+# Recursively download a webpage and all its resources.
+class PageRecursiveDownloader:
   def __init__(self, browser, root):
     assert root.endswith('/'), 'root ("%s") must end in a slash' % root
     os.mkdir(root)
@@ -802,80 +942,170 @@ class PageDownloader:
 # driver = seleniumwire.webdriver.Firefox()
 # cs = CacheServer(driver, 'cache/')
 # driver.get('http://xkcd.com/') # hit CacheServer for most requests
-# cs.internet_enabled = False
+# cs.internet_mode = 0
 # driver.get('http://xkcd.com/') # hit CacheServer or throw 404
 # 
 # # Note: due to browser limitations, you do still need to be connected
-# # to the internet even if `internet_enabled` is `False`.
+# # to the internet even if `internet_mode` is `0`.
 #
 class CacheServer:
-  def __init__(self, driver, root):
-    assert root.endswith('/')
-    self._root = root
-    if os.path.exists(self._root):
-      assert os.path.isdir(self._root)
-    else:
-      os.mkdir(root)
-    if os.path.exists(self._root + 'index.json'):
-      assert os.path.isfile(self._root + 'index.json')
-      with open(self._root + 'index.json') as f:
-        self._index = json.load(f)
-    else:
-      self._index = {}
+  def __init__(self, driver, dbpath):
+    assert type(dbpath) == str
+    # https://stackoverflow.com/questions/64150072/sqlite3-programmingerror-sqlite-objects-created-in-a-thread-can-only-be-used-in
+    # All public methods outside the initializer must be wrap their contents with `with self._mutex:`,
+    # as must the two "interceptor" methods when doing SQL operations.
+    self._mutex = threading.Lock()
+    self._db = sqlite3.connect(dbpath, check_same_thread=False)
+    self._cursor = self._db.cursor()
+    self._cursor.execute("""
+      CREATE TABLE IF NOT EXISTS cache(
+        url TEXT,
+        status_code INTEGER,
+        headers TEXT,
+        unix_time INTEGER,
+        body BLOB
+      );
+    """)
+    self._cursor.execute("""
+      CREATE INDEX IF NOT EXISTS url_index ON cache(url, unix_time);
+    """)
     driver.request_interceptor = lambda request: self._request_interceptor(request)
     driver.response_interceptor = lambda request, response: self._response_interceptor(request, response)
+    # Whether the browser is allowed to hit the internet.
+    # Note: if this is `False`, then a natural consequence is nothing will be added to the cache.
     self.internet_enabled = True
 
+    # 0 - don't write internet-responses to the cache
+    # 1 - add novel URLs' responses to the cache
+    # 2 - add novel URLs' responses to the cache; overwrite existing URLs' responses in the cache
+    # 3 - add novel URLs' responses to the cache; add existing URLs' responses to the cache
+    self.cache_write_mode = 1
+
+    # Number of seconds back in time to check the cache.
+    # Note 1: Entries in the cache are never automatically cleared; merely ignored.
+    # Note 2: If `ttl = 0`, then the cache is never read.
+    # Note 3: If `ttl = inf`, then every item in the cache is fair game.
+    self.ttl = 99999999999
+    # Number of requests that got through the cache.
+    # Useful to track real QPS.
+    self.requestCount = 0
+    self.disable_cors_security = False
+
+  def remove(self, url):
+    assert type(url) == str
+    with self._mutex:
+      self._cursor.execute("""
+        DELETE FROM cache WHERE url = ?;
+      """, (url,))
+
+  def contains(self, url):
+    assert type(url) == str
+    with self._mutex:
+      return self._contains(url)
+
+  def commit(self):
+    with self._mutex:
+      self._db.commit()
+
+  def close(self):
+    with self._mutex:
+      self._db.close()
+
+  def all(self):
+    with self._mutex:
+      result = self._cursor.execute("""
+        SELECT url, status_code, unix_time FROM cache
+      """)
+    rows = result.fetchall()
+    rtn = []
+    for row in rows:
+      rtn.append({
+        'url': row[0],
+        'status_code': row[1],
+        'unix_time': row[2],
+      })
+    return rtn
+
+  def get(self, url):
+    with self._mutex:
+      return self._getFromCache(url)
+
+  def _contains(self, url):
+    result = self._cursor.execute("""
+      SELECT 1 FROM cache WHERE url = ? AND unix_time >= ? LIMIT 1;
+    """, (url, int(time.time() - self.ttl)))
+    return result.fetchone() is not None
+
   def _request_interceptor(self, request):
-    if request.url not in self._index:
-      if not self.internet_enabled:
-        request.create_response(status_code=404, headers=[], body=b'')
-      return None
-    resp = self._index[request.url]
-    with open(self._root + resp['body'], 'rb') as f:
-      body = f.read()
-    request.create_response(status_code=resp['status_code'], headers=resp['headers'], body=body)
+    with self._mutex:
+      result = self._getFromCache(request.url)
+    if result:
+      request.create_response(status_code=result['status_code'], headers=result['headers'], body=result['body'])
+    elif self.internet_enabled:
+      self.requestCount += 1
+      pass # let browser do its thing
+    else:
+      request.create_response(status_code=404, headers=[], body=b'')
 
   def _response_interceptor(self, request, response):
     assert response == request.response
-    if request.url in self._index: return None
-    if not self.internet_enabled: return None
-    data = seleniumwire.utils.decode(response.body, response.headers.get('Content-Encoding', 'identity'))
-    file_name = self.next_file_name()
-    with open(self._root + file_name, 'wb') as f:
-      f.write(data)
-    self._index[request.url] = {
-      'status_code': response.status_code,
-      'headers': response.headers.items(), # list<[str, str]>
-      'body': file_name,
+    if self.disable_cors_security:
+      response.headers['Access-Control-Allow-Origin'] = '*'
+    if not self.internet_enabled:
+      return None
+    if self.cache_write_mode == 0:
+      return None
+    body = self._bodyFromResponse(response)
+    with self._mutex:
+      if self.cache_write_mode == 1:
+        if not self._contains(request.url):
+          self._addToCache(request.url, response, body)
+      elif self.cache_write_mode == 2:
+        if self._contains(request.url):
+          self._updateCacheItem(request.url, response, body)
+        else:
+          self._addToCache(request.url, response, body)
+      elif self.cache_write_mode == 3:
+        self._addToCache(request.url, response, body)
+      else:
+        assert False, self.cache_write_mode
+
+  def _addToCache(self, url, response, body):
+    assert type(url) == str
+    self._cursor.execute("""
+      INSERT INTO cache(url, status_code, headers, unix_time, body)
+      VALUES (?, ?, ?, ?, ?);
+    """, (url, response.status_code, json.dumps(response.headers.items()), int(time.time()), body))
+
+  def _updateCacheItem(self, url, response, body):
+    assert type(url) == str
+    self._cursor.execute("""
+      UPDATE cache
+      SET status_code=?, headers=?, unix_time=?, body=?
+      WHERE url=?;
+    """, (response.status_code, json.dumps(response.headers.items()), int(time.time()), body, url))
+
+  def _bodyFromResponse(self, response):
+    return seleniumwire.utils.decode(response.body, response.headers.get('Content-Encoding', 'identity'))
+
+  def _getFromCache(self, url):
+    result = self._cursor.execute("""
+      SELECT url, status_code, headers, unix_time, body
+      FROM cache
+      WHERE url = ?  AND unix_time >= ?
+      ORDER BY unix_time DESC
+      LIMIT 1;
+    """, (url, int(time.time() - self.ttl)))
+    data = result.fetchone()
+    if data is None:
+      return None
+    return {
+      'url': data[0],
+      'status_code': data[1],
+      'headers': json.loads(data[2]),
+      'unix_time': data[3],
+      'body': data[4],
     }
-
-  def remove(self, url):
-    body = self._index[url]['body']
-    del self._index[url]
-    os.remove(self._root + body)
-
-  def contains(self, url):
-    return url in self._index
-
-  def urls(self):
-    return list(self._index.keys())
-
-  def metadata(self, url):
-    return json.loads(json.dumps(self._index[url]))
-
-  def next_file_name(self):
-    indices = set()
-    for url in self._index:
-      indices.add(int(self._index[url]['body']))
-    for i in range(len(indices)):
-      if i not in indices:
-        return str(i)
-    return str(len(indices))
-
-  def save(self):
-    with open(self._root + 'index.json', 'w') as f:
-      json.dump(self._index, f)
 
 
 
@@ -927,27 +1157,3 @@ def empty(iterator):
   for x in iterator:
     return False
   return True
-
-
-
-
-
-########## tests ##########
-
-def assert_url_good(page_url, rel_path, exp):
-  guess = Browser.absolutifyUrlRelativetoPage(rel_path, page_url)
-  assert guess == exp, (page_url, rel_path, guess, exp)
-
-assert_url_good('https://abc.xyz/foo/bar/index.html', 'img.jpg', 'https://abc.xyz/foo/bar/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/', 'img.jpg', 'https://abc.xyz/foo/bar/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/index.html', './img.jpg', 'https://abc.xyz/foo/bar/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/', './img.jpg', 'https://abc.xyz/foo/bar/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/index.html', '/img.jpg', 'https://abc.xyz/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/', '/img.jpg', 'https://abc.xyz/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/index.html', '../img.jpg', 'https://abc.xyz/foo/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/', '../img.jpg', 'https://abc.xyz/foo/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/index.html', '../../img.jpg', 'https://abc.xyz/img.jpg')
-assert_url_good('https://abc.xyz/foo/bar/', '../../img.jpg', 'https://abc.xyz/img.jpg')
-assert_url_good('https://www.girlspns.com/index.html', 'img.jpg', 'https://www.girlspns.com/img.jpg')
-assert_url_good('https://www.girlspns.com/index.html', './img.jpg', 'https://www.girlspns.com/img.jpg')
-assert_url_good('https://www.girlspns.com/index.html', '/img.jpg', 'https://www.girlspns.com/img.jpg')
